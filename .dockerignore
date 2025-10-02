@@ -1,0 +1,10 @@
+# Docker
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Logs
+*.log
+
+# Environment
+.env

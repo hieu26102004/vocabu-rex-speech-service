@@ -1,0 +1,127 @@
+services:
+  # PostgreSQL Database for Speech Service
+  speech-db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: vocabu_user
+      POSTGRES_PASSWORD: vocabu_password
+      POSTGRES_DB: vocabu_speech_db
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    ports:
+      - "5435:5432"
+    volumes:
+      - speech_db_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vocabu_user -d vocabu_speech_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - speech-network
+
+  # Redis for Caching and Session Management
+  redis-speech:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6382:6379"
+    volumes:
+      - redis_speech_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - speech-network
+
+  # Speech Service Application
+  speech-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "3005:3005"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://vocabu_user:vocabu_password@speech-db:5432/vocabu_speech_db
+      - REDIS_URL=redis://redis-speech:6379
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - PORT=3005
+      - HOST=0.0.0.0
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      - ./models:/app/models
+      - ./credentials:/app/credentials:ro
+    depends_on:
+      speech-db:
+        condition: service_healthy
+      redis-speech:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - speech-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@vocaburex.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_LISTEN_PORT: 80
+    ports:
+      - "5051:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - speech-db
+    networks:
+      - speech-network
+    profiles:
+      - tools
+
+  # Optional: Redis Commander for Redis management
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    restart: always
+    environment:
+      - REDIS_HOSTS=redis-speech:redis-speech:6379
+    ports:
+      - "8082:8081"
+    depends_on:
+      - redis-speech
+    networks:
+      - speech-network
+    profiles:
+      - tools
+
+volumes:
+  speech_db_data:
+    driver: local
+  redis_speech_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+networks:
+  speech-network:
+    driver: bridge

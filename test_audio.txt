@@ -1,0 +1,2 @@
+This is a test audio file for pronunciation assessment.
+(Mock audio content - in real implementation this would be WAV/MP3)

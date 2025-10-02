@@ -1,0 +1,18 @@
+services:
+  speech-service-simple:
+    build:
+      context: .
+      dockerfile: Dockerfile.simple
+    container_name: vocabu-rex-speech-simple
+    ports:
+      - "3005:3005"
+    environment:
+      - ENV=production
+      - LOG_LEVEL=info
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

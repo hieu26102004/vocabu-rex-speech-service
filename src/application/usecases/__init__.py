@@ -1,0 +1,3 @@
+"""
+Application usecases initialization
+"""
