@@ -10,7 +10,6 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from fastapi.responses import JSONResponse
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from src.application.dtos.asr_dto import (
     ASRRequest, ASRResponseDTO, BatchASRRequest, BatchASRResponseDTO,
@@ -28,9 +27,6 @@ from src.core.exceptions import (
     validation_required_field_error
 )
 
-
-# Security
-security = HTTPBearer()
 
 # Router
 asr_router = APIRouter(
@@ -63,11 +59,52 @@ class ASRController:
         self.validate_audio_use_case = validate_audio_use_case
 
 
-# Dependency injection placeholder
+# Dependency injection implementation
 async def get_asr_controller() -> ASRController:
-    """Get ASR controller instance - to be implemented with proper DI"""
-    # This should be replaced with actual dependency injection
-    raise NotImplementedError("Dependency injection not implemented yet")
+    """Get ASR controller instance with real services"""
+    import logging
+    from src.infrastructure.services.enhanced_whisper_service import EnhancedWhisperASRService
+    from src.application.use_cases.asr_use_cases import (
+        TranscribeAudioUseCase, BatchTranscribeAudioUseCase,
+        TranscriptionOnlyUseCase, ValidateAudioForASRUseCase
+    )
+    
+    # Initialize logger
+    logger = logging.getLogger(__name__)
+    
+    # Initialize Whisper service  
+    whisper_service = EnhancedWhisperASRService()
+    
+    # Mock pronunciation and fluency analyzers for now
+    class MockPronunciationAnalyzer:
+        async def analyze_pronunciation(self, actual_utterance, reference_text, reference_phonemes=None):
+            return await whisper_service.compare_pronunciation(actual_utterance, reference_text, reference_phonemes)
+    
+    class MockFluencyAnalyzer:
+        async def analyze_fluency(self, actual_utterance, reference_duration=None):
+            return await whisper_service.analyze_fluency(actual_utterance, reference_duration)
+    
+    pronunciation_analyzer = MockPronunciationAnalyzer()
+    fluency_analyzer = MockFluencyAnalyzer()
+    
+    # Initialize use cases with all required dependencies
+    transcribe_use_case = TranscribeAudioUseCase(
+        asr_service=whisper_service,
+        pronunciation_analyzer=pronunciation_analyzer,
+        fluency_analyzer=fluency_analyzer,
+        logger=logger
+    )
+    batch_transcribe_use_case = BatchTranscribeAudioUseCase(whisper_service, logger)
+    transcription_only_use_case = TranscriptionOnlyUseCase(whisper_service, logger)
+    validate_audio_use_case = ValidateAudioForASRUseCase(logger)
+    
+    # Create controller
+    return ASRController(
+        transcribe_use_case=transcribe_use_case,
+        batch_transcribe_use_case=batch_transcribe_use_case,
+        transcription_only_use_case=transcription_only_use_case,
+        validate_audio_use_case=validate_audio_use_case
+    )
 
 
 @asr_router.post(
@@ -87,7 +124,6 @@ async def transcribe_audio(
     compare_pronunciation: bool = Form(default=True, description="Compare with reference pronunciation"),
     analyze_fluency: bool = Form(default=True, description="Analyze speech fluency"),
     controller: ASRController = Depends(get_asr_controller),
-    credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> ASRResponseDTO:
     """
     Transcribe uploaded audio file with Enhanced ASR and pronunciation analysis
@@ -177,7 +213,6 @@ async def transcribe_only(
     language: str = Form(default="english", description="Language for transcription"),
     model_size: str = Form(default="base", description="Whisper model size"),
     controller: ASRController = Depends(get_asr_controller),
-    credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> TranscriptionOnlyResponseDTO:
     """
     Transcribe uploaded audio file without pronunciation analysis
@@ -259,7 +294,6 @@ async def batch_transcribe_audio(
     model_size: str = Form(default="base", description="Whisper model size"),
     parallel_processing: bool = Form(default=True, description="Process files in parallel"),
     controller: ASRController = Depends(get_asr_controller),
-    credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> BatchASRResponseDTO:
     """
     Batch transcribe multiple audio files
@@ -363,7 +397,6 @@ async def validate_audio_file(
     check_format: bool = Form(default=True, description="Check audio format"),
     whisper_compatibility: bool = Form(default=True, description="Check Whisper compatibility"),
     controller: ASRController = Depends(get_asr_controller),
-    credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> ASRValidationResponseDTO:
     """
     Validate audio file for ASR processing
@@ -435,7 +468,6 @@ async def validate_audio_file(
     description="List all available Whisper models with their information"
 )
 async def get_available_models(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> List[ModelInfoResponseDTO]:
     """
     Get list of available Whisper models
@@ -528,7 +560,6 @@ async def get_available_models(
     description="List all languages supported by the ASR service"
 )
 async def get_supported_languages(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> SupportedLanguagesASRResponseDTO:
     """
     Get list of supported languages for ASR
@@ -586,7 +617,6 @@ async def get_supported_languages(
     description="Get current configuration settings for the ASR service"
 )
 async def get_asr_config(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> ASRConfigDTO:
     """
     Get current ASR service configuration

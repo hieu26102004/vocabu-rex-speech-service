@@ -48,14 +48,12 @@ class TranscribeAudioUseCase:
             # Validate audio file
             await self._validate_audio_file(audio_file_path)
             
-            # Transcribe with Whisper
+            # Transcribe with Whisper (only use supported parameters)
             asr_result = await self.asr_service.transcribe_with_phonemes(
                 audio_file_path=audio_file_path,
                 reference_text=request.reference_text,
                 language=request.language,
-                model_size=request.model_size,
-                include_timing=request.include_timing,
-                include_confidence=request.include_confidence
+                model_size=request.model_size
             )
             
             # Convert to response DTO

@@ -9,7 +9,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 
 from src.presentation.controllers.health_controller import health_router
@@ -17,9 +16,7 @@ from src.presentation.controllers.phonemization_controller import phonemization_
 from src.presentation.controllers.alignment_controller import alignment_router
 from src.presentation.controllers.scoring_controller import scoring_router
 from src.api.controllers.asr_controller import asr_router
-from src.presentation.middleware.auth_middleware import AuthMiddleware
-from src.presentation.middleware.logging_middleware import LoggingMiddleware
-from src.presentation.middleware.error_middleware import ErrorHandlerMiddleware
+# Middleware imports removed for local development
 from src.shared.config import get_settings
 from src.core.exceptions import SpeechServiceException
 
@@ -65,25 +62,16 @@ def create_app() -> FastAPI:
         lifespan=lifespan
     )
     
-    # Add security middleware
-    app.add_middleware(
-        TrustedHostMiddleware, 
-        allowed_hosts=["localhost", "127.0.0.1", "*.vocaburex.com"]
-    )
-    
-    # Add CORS middleware
+    # Add completely open CORS for local development
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.ALLOWED_ORIGINS.split(","),
+        allow_origins=["*"],
         allow_credentials=True,
-        allow_methods=settings.ALLOWED_METHODS.split(","),
-        allow_headers=settings.ALLOWED_HEADERS.split(","),
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
     
-    # Add custom middleware
-    app.add_middleware(ErrorHandlerMiddleware)
-    app.add_middleware(LoggingMiddleware)
-    app.add_middleware(AuthMiddleware)
+    # All security middleware disabled for local development
     
     # Include routers
     app.include_router(health_router, prefix="/health", tags=["Health"])

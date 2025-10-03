@@ -432,18 +432,35 @@ class EnhancedWhisperASRService(IEnhancedASRService):
         """Load Whisper model with caching"""
         try:
             if model_size in self._loaded_models:
+                logger.info(f"♻️  Using cached Whisper model: {model_size}")
                 return self._loaded_models[model_size]
             
-            logger.info(f"Loading Whisper model: {model_size}")
+            logger.info(f"🔄 Loading Whisper model: {model_size} on device: {self.device}")
+            logger.info(f"📦 Available models: {self.available_models}")
+            
             model = whisper.load_model(model_size, device=self.device)
             self._loaded_models[model_size] = model
             
-            logger.info(f"Whisper model {model_size} loaded successfully")
+            logger.info(f"✅ Whisper model {model_size} loaded successfully on {self.device}")
+            logger.info(f"🧠 Model parameters: ~{self._get_model_params(model_size)}")
             return model
             
         except Exception as e:
-            logger.error(f"Failed to load Whisper model {model_size}: {e}")
+            logger.error(f"❌ Failed to load Whisper model {model_size}: {e}")
             raise
+    
+    def _get_model_params(self, model_size: str) -> str:
+        """Get approximate model parameters for logging"""
+        param_info = {
+            "tiny": "39M parameters",
+            "base": "74M parameters", 
+            "small": "244M parameters",
+            "medium": "769M parameters",
+            "large": "1550M parameters",
+            "large-v2": "1550M parameters",
+            "large-v3": "1550M parameters"
+        }
+        return param_info.get(model_size, "Unknown size")
     
     async def _preprocess_audio_for_whisper(self, audio_file_path: str) -> str:
         """Preprocess audio for optimal Whisper performance"""
@@ -504,6 +521,10 @@ class EnhancedWhisperASRService(IEnhancedASRService):
             # Map language
             whisper_language = self.language_mapping.get(language, "en")
             
+            logger.info(f"🎯 Starting Whisper transcription...")
+            logger.info(f"🎧 Audio file: {Path(audio_file_path).name}")
+            logger.info(f"🌍 Language: {language} -> {whisper_language}")
+            
             # Transcribe with word timestamps
             result = model.transcribe(
                 audio_file_path,
@@ -511,6 +532,10 @@ class EnhancedWhisperASRService(IEnhancedASRService):
                 word_timestamps=True,
                 verbose=False
             )
+            
+            transcribed = result.get('text', '').strip()
+            logger.info(f"🎤 Whisper transcription: '{transcribed}'")
+            logger.info(f"📊 Segments count: {len(result.get('segments', []))}")
             
             return result
             
