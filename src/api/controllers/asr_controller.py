@@ -75,17 +75,10 @@ async def get_asr_controller() -> ASRController:
     # Initialize Whisper service  
     whisper_service = EnhancedWhisperASRService()
     
-    # Mock pronunciation and fluency analyzers for now
-    class MockPronunciationAnalyzer:
-        async def analyze_pronunciation(self, actual_utterance, reference_text, reference_phonemes=None):
-            return await whisper_service.compare_pronunciation(actual_utterance, reference_text, reference_phonemes)
-    
-    class MockFluencyAnalyzer:
-        async def analyze_fluency(self, actual_utterance, reference_duration=None):
-            return await whisper_service.analyze_fluency(actual_utterance, reference_duration)
-    
-    pronunciation_analyzer = MockPronunciationAnalyzer()
-    fluency_analyzer = MockFluencyAnalyzer()
+    # Real pronunciation and fluency analyzers using Whisper service directly
+    # The EnhancedWhisperASRService already includes pronunciation and fluency analysis
+    pronunciation_analyzer = whisper_service  # Use Whisper service directly
+    fluency_analyzer = whisper_service  # Use Whisper service directly
     
     # Initialize use cases with all required dependencies
     transcribe_use_case = TranscribeAudioUseCase(

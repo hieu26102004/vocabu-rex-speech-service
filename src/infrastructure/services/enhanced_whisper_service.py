@@ -114,10 +114,16 @@ class EnhancedWhisperASRService(IEnhancedASRService):
             # Preprocess audio
             processed_audio_path = await self._preprocess_audio_for_whisper(audio_file_path)
             
-            # Perform Whisper transcription
-            transcription_result = await self._run_whisper_transcription(
-                model, processed_audio_path, language
-            )
+            # Perform Whisper transcription with fallback
+            try:
+                transcription_result = await self._run_whisper_transcription(
+                    model, processed_audio_path, language
+                )
+            except Exception as e:
+                logger.warning(f"Preprocessing failed, trying with original file: {e}")
+                transcription_result = await self._run_whisper_transcription(
+                    model, audio_file_path, language
+                )
             
             # Extract phoneme-level information
             actual_utterance = await self._extract_phoneme_level_data(
@@ -465,25 +471,46 @@ class EnhancedWhisperASRService(IEnhancedASRService):
     async def _preprocess_audio_for_whisper(self, audio_file_path: str) -> str:
         """Preprocess audio for optimal Whisper performance"""
         try:
+            logger.info(f"Preprocessing audio: {audio_file_path}")
+            
+            # Check if original file exists
+            if not Path(audio_file_path).exists():
+                logger.error(f"Original audio file not found: {audio_file_path}")
+                return audio_file_path
+            
             # Load audio
             data, sample_rate = librosa.load(audio_file_path, sr=16000, mono=True)
+            logger.info(f"Audio loaded: {len(data)} samples, {sample_rate}Hz")
             
             # Normalize
             data = librosa.util.normalize(data)
             
-            # Apply light noise reduction
-            data = self._apply_light_noise_reduction(data, sample_rate)
+            # Apply light noise reduction (simplified - skip if scipy not available)
+            try:
+                data = self._apply_light_noise_reduction(data, sample_rate)
+            except Exception as nr_e:
+                logger.warning(f"Noise reduction skipped: {nr_e}")
             
-            # Create temp file
-            temp_dir = Path(tempfile.gettempdir()) / "whisper_preprocessing"
-            temp_dir.mkdir(exist_ok=True)
+            # Create temp file in uploads directory instead of system temp for better path handling
+            uploads_dir = Path("./uploads")
+            uploads_dir.mkdir(exist_ok=True)
             
-            temp_path = temp_dir / f"preprocessed_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav"
+            temp_path = uploads_dir / f"preprocessed_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav"
             
             # Save preprocessed audio
-            sf.write(temp_path, data, 16000)
+            sf.write(str(temp_path), data, 16000)
+            logger.info(f"Preprocessed audio saved: {temp_path}")
             
-            return str(temp_path)
+            # Verify file was created and get file info
+            if not temp_path.exists():
+                logger.error(f"Failed to create preprocessed file: {temp_path}")
+                return audio_file_path
+            
+            file_size = temp_path.stat().st_size
+            logger.info(f"✅ File created successfully: {file_size} bytes")
+            
+            # Return absolute path to avoid any relative path issues
+            return str(temp_path.absolute())
             
         except Exception as e:
             logger.error(f"Audio preprocessing failed: {e}")
@@ -525,13 +552,69 @@ class EnhancedWhisperASRService(IEnhancedASRService):
             logger.info(f"🎧 Audio file: {Path(audio_file_path).name}")
             logger.info(f"🌍 Language: {language} -> {whisper_language}")
             
-            # Transcribe with word timestamps
-            result = model.transcribe(
-                audio_file_path,
-                language=whisper_language,
-                word_timestamps=True,
-                verbose=False
-            )
+            # Check if file exists with detailed debugging
+            audio_path = Path(audio_file_path)
+            logger.info(f"🔍 Checking file: {audio_path.absolute()}")
+            logger.info(f"🔍 File exists: {audio_path.exists()}")
+            logger.info(f"🔍 File size: {audio_path.stat().st_size if audio_path.exists() else 'N/A'}")
+            
+            if not audio_path.exists():
+                logger.error(f"Audio file not found: {audio_file_path}")
+                raise FileNotFoundError(f"Audio file not found: {audio_file_path}")
+            
+            # Use absolute path for Whisper to avoid path issues
+            absolute_audio_path = str(audio_path.absolute())
+            logger.info(f"🎵 Using absolute path for Whisper: {absolute_audio_path}")
+            
+            # Try different approaches to transcribe
+            try:
+                logger.info(f"🚀 Method 1: Calling model.transcribe with file path: {absolute_audio_path}")
+                result = model.transcribe(
+                    absolute_audio_path,
+                    language=whisper_language,
+                    word_timestamps=True,
+                    verbose=False
+                )
+                logger.info(f"✅ Whisper transcription completed successfully")
+            except Exception as transcribe_error:
+                logger.error(f"🔥 Method 1 failed: {type(transcribe_error).__name__}: {transcribe_error}")
+                
+                # Method 2: Try with numpy array directly
+                try:
+                    logger.info(f"🔄 Method 2: Loading audio as numpy array for Whisper...")
+                    import librosa
+                    import numpy as np
+                    
+                    # Load audio as numpy array
+                    audio_array, sr = librosa.load(absolute_audio_path, sr=16000)
+                    logger.info(f"� Audio array shape: {audio_array.shape}, sample rate: {sr}")
+                    
+                    # Transcribe with numpy array instead of file path
+                    result = model.transcribe(
+                        audio_array,
+                        language=whisper_language,
+                        word_timestamps=True,
+                        verbose=False
+                    )
+                    logger.info(f"✅ Whisper transcription with numpy array succeeded")
+                    
+                except Exception as array_error:
+                    logger.error(f"🔥 Method 2 also failed: {array_error}")
+                    
+                    # Method 3: Last resort - try original file
+                    try:
+                        logger.info(f"🔄 Method 3: Trying with original file as last resort...")
+                        original_audio_array, _ = librosa.load(audio_file_path, sr=16000) 
+                        result = model.transcribe(
+                            original_audio_array,
+                            language=whisper_language,
+                            word_timestamps=True,
+                            verbose=False
+                        )
+                        logger.info(f"✅ Whisper transcription with original audio succeeded")
+                    except Exception as final_error:
+                        logger.error(f"🔥 All methods failed. Final error: {final_error}")
+                        raise transcribe_error
             
             transcribed = result.get('text', '').strip()
             logger.info(f"🎤 Whisper transcription: '{transcribed}'")
