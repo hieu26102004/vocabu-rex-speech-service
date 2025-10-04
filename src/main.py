@@ -121,7 +121,12 @@ def create_app() -> FastAPI:
     
     # Include routers
     app.include_router(health_router, prefix="/health", tags=["Health"])
-    app.include_router(asr_router, tags=["Enhanced ASR"])
+    app.include_router(asr_router, tags=["Enhanced ASR"])  # Public API with /api/v1 prefix
+    
+    # Internal API endpoints (no prefix for microservice calls)
+    from src.api.controllers.internal_asr_controller import internal_asr_router
+    app.include_router(internal_asr_router, tags=["Internal ASR"])
+    
     app.include_router(phonemization_router, prefix="/api/v1", tags=["Phonemization"])
     app.include_router(alignment_router, prefix="/api/v1", tags=["Forced Alignment"])
     app.include_router(scoring_router, tags=["Comprehensive Scoring"])
