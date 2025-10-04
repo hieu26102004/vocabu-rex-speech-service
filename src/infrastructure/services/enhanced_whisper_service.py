@@ -469,6 +469,13 @@ class EnhancedWhisperASRService(IEnhancedASRService):
             
             logger.info(f"✅ Whisper model {model_size} loaded successfully on {self.device}")
             logger.info(f"🧠 Model parameters: ~{self._get_model_params(model_size)}")
+            
+            # Log GPU memory usage if using CUDA
+            if self.device.startswith("cuda") and torch.cuda.is_available():
+                memory_allocated = torch.cuda.memory_allocated() / 1024**3
+                memory_reserved = torch.cuda.memory_reserved() / 1024**3
+                logger.info(f"📊 GPU Memory - Allocated: {memory_allocated:.2f} GB, Reserved: {memory_reserved:.2f} GB")
+            
             return model
             
         except Exception as e:

@@ -7,6 +7,7 @@ import tempfile
 import os
 from typing import List, Optional
 from pathlib import Path
+import torch
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from fastapi.responses import JSONResponse
@@ -72,8 +73,16 @@ async def get_asr_controller() -> ASRController:
     # Initialize logger
     logger = logging.getLogger(__name__)
     
-    # Initialize Whisper service  
-    whisper_service = EnhancedWhisperASRService()
+    # Initialize Whisper service with GPU if available
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    logger.info(f"🎯 Initializing Whisper service with device: {device}")
+    if torch.cuda.is_available():
+        logger.info(f"🚀 GPU detected: {torch.cuda.get_device_name(0)}")
+        logger.info(f"💾 GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+    else:
+        logger.info("💻 Using CPU - no CUDA GPU detected")
+    
+    whisper_service = EnhancedWhisperASRService(device=device)
     
     # Real pronunciation and fluency analyzers using Whisper service directly
     # The EnhancedWhisperASRService already includes pronunciation and fluency analysis
