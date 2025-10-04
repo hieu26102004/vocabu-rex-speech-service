@@ -433,19 +433,95 @@ class EnhancedWhisperASRService(IEnhancedASRService):
             logger.info(f"🚀 Preloading Whisper model: {model_size}")
             model = await self._load_whisper_model(model_size)
             
-            # Warm up with dummy data to initialize CUDA context if using GPU
+            # Comprehensive warm-up to avoid first-request delays
             logger.info(f"🔍 Device check for warm-up: {self.device}")
-            if self.device.startswith("cuda") or self.device == "cuda":
-                import numpy as np
-                dummy_audio = np.zeros(16000, dtype=np.float32)  # 1 second of silence
-                logger.info("🔥 Warming up GPU with dummy inference...")
+            
+            # Try to use real audio file for more effective warm-up
+            import numpy as np
+            warmup_files = [
+                "warmup/warmup.mp3", "warmup/warmup.wav",
+                "test.mp3", "test copy.mp3", "test_audio.mp3"
+            ]
+            
+            dummy_audio = None
+            warmup_file_used = None
+            
+            # Look for existing audio files to use for warm-up
+            for warmup_file in warmup_files:
+                if os.path.exists(warmup_file):
+                    try:
+                        # Load the real audio file
+                        logger.info(f"🎵 Found warmup file: {warmup_file}")
+                        dummy_audio, sr = librosa.load(warmup_file, sr=16000, duration=2.0)  # 2 seconds max
+                        warmup_file_used = warmup_file
+                        logger.info(f"✅ Loaded real audio for warm-up: {len(dummy_audio)} samples")
+                        break
+                    except Exception as e:
+                        logger.warning(f"⚠️ Could not load {warmup_file}: {e}")
+                        continue
+            
+            # Fallback to synthetic audio if no real file found
+            if dummy_audio is None:
+                logger.info("🔧 No warmup audio found, creating synthetic speech-like audio")
+                duration = 1.0  # 1 second
+                sample_rate = 16000
+                t = np.linspace(0, duration, int(sample_rate * duration), False)
+                
+                # Create a simple speech-like waveform (multiple frequencies)
+                dummy_audio = (
+                    0.3 * np.sin(2 * np.pi * 200 * t) +  # Low frequency
+                    0.2 * np.sin(2 * np.pi * 800 * t) +  # Mid frequency  
+                    0.1 * np.sin(2 * np.pi * 2000 * t)   # High frequency
+                ) * np.exp(-3 * t)  # Decay envelope
+                warmup_file_used = "synthetic"
+            
+            dummy_audio = dummy_audio.astype(np.float32)
+            
+            logger.info(f"🔥 Warming up model with {warmup_file_used or 'synthetic'} audio...")
+            try:
+                # Perform full transcription pipeline warm-up
+                start_time = datetime.now()
+                result = model.transcribe(
+                    dummy_audio, 
+                    language="en", 
+                    verbose=False,
+                    word_timestamps=True,
+                    fp16=self.device.startswith("cuda")
+                )
+                warmup_time = (datetime.now() - start_time).total_seconds() * 1000
+                
+                logger.info(f"✅ Model warm-up completed in {warmup_time:.1f}ms using {warmup_file_used or 'synthetic'}")
+                logger.info(f"🎯 Warm-up result: '{result.get('text', '').strip()}'")
+                
+                # Additional warm-up for audio preprocessing pipeline
+                logger.info("🔧 Warming up audio preprocessing pipeline...")
+                
+                # Test librosa loading (this can be slow on first use)  
+                dummy_audio_resample = librosa.resample(dummy_audio, orig_sr=16000, target_sr=16000)
+                
+                # Test soundfile operations
+                temp_path = None
                 try:
-                    _ = model.transcribe(dummy_audio, language="en", verbose=False)
-                    logger.info("✅ GPU warm-up completed successfully")
-                except Exception as warmup_error:
-                    logger.error(f"❌ GPU warm-up failed: {warmup_error}")
-            else:
-                logger.info(f"⚡ Skipping GPU warm-up (device: {self.device})")
+                    with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
+                        temp_path = temp_file.name
+                        sf.write(temp_path, dummy_audio, 16000)
+                        data, sr = sf.read(temp_path)
+                    logger.info("✅ Audio preprocessing pipeline warmed up")
+                finally:
+                    if temp_path and os.path.exists(temp_path):
+                        try:
+                            os.unlink(temp_path)
+                        except:
+                            pass
+                
+                if self.device.startswith("cuda"):
+                    logger.info("🚀 GPU warm-up completed - ready for fast inference")
+                else:
+                    logger.info("💻 CPU warm-up completed - ready for inference")
+                    
+            except Exception as warmup_error:
+                logger.error(f"❌ Model warm-up failed: {warmup_error}")
+                logger.warning("⚠️  First request may be slower than expected")
                 
             return True
         except Exception as e:
