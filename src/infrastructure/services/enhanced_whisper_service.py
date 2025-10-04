@@ -427,6 +427,31 @@ class EnhancedWhisperASRService(IEnhancedASRService):
         """Get available Whisper model sizes"""
         return self.available_models.copy()
     
+    async def preload_model(self, model_size: str = "base"):
+        """Preload Whisper model to cache for faster inference"""
+        try:
+            logger.info(f"🚀 Preloading Whisper model: {model_size}")
+            model = await self._load_whisper_model(model_size)
+            
+            # Warm up with dummy data to initialize CUDA context if using GPU
+            logger.info(f"🔍 Device check for warm-up: {self.device}")
+            if self.device.startswith("cuda") or self.device == "cuda":
+                import numpy as np
+                dummy_audio = np.zeros(16000, dtype=np.float32)  # 1 second of silence
+                logger.info("🔥 Warming up GPU with dummy inference...")
+                try:
+                    _ = model.transcribe(dummy_audio, language="en", verbose=False)
+                    logger.info("✅ GPU warm-up completed successfully")
+                except Exception as warmup_error:
+                    logger.error(f"❌ GPU warm-up failed: {warmup_error}")
+            else:
+                logger.info(f"⚡ Skipping GPU warm-up (device: {self.device})")
+                
+            return True
+        except Exception as e:
+            logger.error(f"❌ Model preload failed: {e}")
+            return False
+    
     async def validate_audio_for_transcription(self, audio_file_path: str) -> bool:
         """Validate audio file for Whisper transcription"""
         try:

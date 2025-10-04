@@ -42,6 +42,52 @@ async def lifespan(app: FastAPI):
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     logger.info(f"✅ Upload directory created: {settings.UPLOAD_DIR}")
     
+    # Initialize and preload Whisper model with GPU detection
+    logger.info("🔄 Initializing Whisper service with GPU detection...")
+    try:
+        import torch
+        from src.infrastructure.services.enhanced_whisper_service import EnhancedWhisperASRService
+        
+        # Debug GPU availability
+        cuda_available = torch.cuda.is_available()
+        device_count = torch.cuda.device_count()
+        logger.info(f"🔍 GPU Detection - CUDA Available: {cuda_available}, Device count: {device_count}")
+        
+        # Force GPU if available
+        device = "cuda" if cuda_available else "cpu"
+        logger.info(f"🎯 Selected device: {device}")
+        
+        if cuda_available:
+            try:
+                gpu_name = torch.cuda.get_device_name(0)
+                gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                logger.info(f"� GPU detected: {gpu_name}")
+                logger.info(f"💾 GPU memory: {gpu_memory:.1f} GB")
+            except Exception as e:
+                logger.warning(f"⚠️ GPU info error (but still using GPU): {e}")
+        else:
+            logger.info("💻 Using CPU - no CUDA GPU detected")
+        
+        # Initialize service with explicit device
+        logger.info(f"🔧 Initializing EnhancedWhisperASRService with device: {device}")
+        whisper_service = EnhancedWhisperASRService(device=device)
+        logger.info(f"✅ Whisper service initialized with device: {whisper_service.device}")
+        
+        # Update global service instance
+        from src.api import controllers
+        controllers.asr_controller._whisper_service = whisper_service
+        
+        # Preload and warm up base model
+        logger.info("🔄 Preloading Whisper model...")
+        success = await whisper_service.preload_model("base")
+        if success:
+            logger.info("🚀 Whisper model preloaded and warmed up successfully!")
+        else:
+            logger.warning("⚠️  Model preload failed but service will continue")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize Whisper service: {e}")
+        logger.info("⚠️  Service will be initialized on first request")
+    
     yield
     
     # Shutdown

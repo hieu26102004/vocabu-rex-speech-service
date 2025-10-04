@@ -27,6 +27,7 @@ from src.core.exceptions import (
     audio_file_not_found_error, audio_format_unsupported_error,
     validation_required_field_error
 )
+from src.infrastructure.services.enhanced_whisper_service import EnhancedWhisperASRService
 
 
 # Router
@@ -73,34 +74,61 @@ async def get_asr_controller() -> ASRController:
     # Initialize logger
     logger = logging.getLogger(__name__)
     
-    # Initialize Whisper service with GPU if available
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    logger.info(f"🎯 Initializing Whisper service with device: {device}")
-    if torch.cuda.is_available():
-        logger.info(f"🚀 GPU detected: {torch.cuda.get_device_name(0)}")
-        logger.info(f"💾 GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
-    else:
-        logger.info("💻 Using CPU - no CUDA GPU detected")
-    
-    whisper_service = EnhancedWhisperASRService(device=device)
-    
-    # Real pronunciation and fluency analyzers using Whisper service directly
-    # The EnhancedWhisperASRService already includes pronunciation and fluency analysis
-    pronunciation_analyzer = whisper_service  # Use Whisper service directly
-    fluency_analyzer = whisper_service  # Use Whisper service directly
-    
-    # Initialize use cases with all required dependencies
-    transcribe_use_case = TranscribeAudioUseCase(
-        asr_service=whisper_service,
-        pronunciation_analyzer=pronunciation_analyzer,
-        fluency_analyzer=fluency_analyzer,
-        logger=logger
-    )
-    batch_transcribe_use_case = BatchTranscribeAudioUseCase(whisper_service, logger)
-    transcription_only_use_case = TranscriptionOnlyUseCase(whisper_service, logger)
-    validate_audio_use_case = ValidateAudioForASRUseCase(logger)
-    
-    # Create controller
+# Global Whisper service instance (singleton)
+_whisper_service = None
+
+def get_whisper_service():
+    global _whisper_service
+    if _whisper_service is None:
+        # Debug GPU availability
+        cuda_available = torch.cuda.is_available()
+        device_count = torch.cuda.device_count()
+        logger.info(f"🔍 CUDA Debug - Available: {cuda_available}, Device count: {device_count}")
+        
+        # Force GPU if available - don't fallback on GPU info errors
+        device = "cuda" if cuda_available else "cpu"
+        logger.info(f"🎯 Initializing Whisper service with device: {device}")
+        
+        if cuda_available:
+            try:
+                gpu_name = torch.cuda.get_device_name(0)
+                gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                logger.info(f"🚀 GPU detected: {gpu_name}")
+                logger.info(f"💾 GPU memory: {gpu_memory:.1f} GB")
+            except Exception as e:
+                logger.warning(f"⚠️ GPU info error (but still using GPU): {e}")
+                # DON'T fallback to CPU - keep using GPU even if info fails
+        else:
+            logger.info("💻 Using CPU - no CUDA GPU detected")
+        
+        # Explicitly log the final device choice
+        logger.info(f"🔧 Final device choice: {device}")
+        
+        _whisper_service = EnhancedWhisperASRService(device=device)
+        logger.info(f"✅ Global Whisper service initialized with device: {_whisper_service.device}")
+    return _whisper_service
+
+# Initialize service on module load
+whisper_service = get_whisper_service()
+
+# Real pronunciation and fluency analyzers using Whisper service directly
+# The EnhancedWhisperASRService already includes pronunciation and fluency analysis
+pronunciation_analyzer = whisper_service  # Use Whisper service directly
+fluency_analyzer = whisper_service  # Use Whisper service directly
+
+# Initialize use cases with all required dependencies
+transcribe_use_case = TranscribeAudioUseCase(
+    asr_service=whisper_service,
+    pronunciation_analyzer=pronunciation_analyzer,
+    fluency_analyzer=fluency_analyzer,
+    logger=logger
+)
+batch_transcribe_use_case = BatchTranscribeAudioUseCase(whisper_service, logger)
+transcription_only_use_case = TranscriptionOnlyUseCase(whisper_service, logger)
+validate_audio_use_case = ValidateAudioForASRUseCase(logger)
+
+def get_asr_controller() -> ASRController:
+    """Get ASR controller with initialized services"""
     return ASRController(
         transcribe_use_case=transcribe_use_case,
         batch_transcribe_use_case=batch_transcribe_use_case,
