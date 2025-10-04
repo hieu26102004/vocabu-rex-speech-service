@@ -1,17 +1,27 @@
+# Core FastAPI and Web Server
 fastapi==0.104.0
 uvicorn[standard]==0.24.0
 pydantic==2.4.0
 pydantic-settings==2.0.0
 python-multipart==0.0.6
 aiofiles==23.2.1
+starlette==0.27.0
+
+# Audio Processing and ML  
 librosa==0.10.1
 scipy==1.11.0
 numpy==1.24.0
 soundfile==0.12.1
 openai-whisper==20231117
-torch==2.1.0
-torchaudio==2.1.0
+# torch, torchaudio will be installed separately with CUDA support
 transformers==4.35.0
+
+# HTTP Client for health checks
+httpx==0.25.2
+requests==2.31.0
+
+# Speech evaluation and quality metrics
+jiwer==3.0.3
 
 # Phonemization and Forced Alignment
 phonemizer==3.2.1
@@ -20,11 +30,11 @@ textgrid==1.5
 g2p-en==2.1.0
 epitran==1.24
 
-# Audio Analysis
-praat-parselmouth==0.4.3
-pyworld==0.3.4
-crepe==0.0.12
+# Audio Analysis (optional - removed problematic packages)
+# praat-parselmouth==0.4.3
+# pyworld==0.3.4  
+# crepe==0.0.12
 
-# Scientific Computing
+# Scientific Computing and ML utilities
 scikit-learn==1.3.0
 dtw-python==1.3.0

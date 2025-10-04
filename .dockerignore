@@ -1,10 +1,96 @@
-# Docker
-Dockerfile*
-docker-compose*
+# Git files
+.git/
+.gitignore
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs and temporary files
+*.log
+logs/
+temp/
+tmp/
+
+# Test files
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Docker files (except Dockerfile)
+docker-compose*.yml
 .dockerignore
 
-# Logs
-*.log
+# Documentation
+docs/
+*.md
+README.md
 
-# Environment
-.env
+# Environment files
+.env*
+
+# Node modules (if any)
+node_modules/
+
+# Models (will be downloaded in container)
+models/whisper/
+
+# Large media files
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.m4a
+!warmup/warmup.*
+
+# Uploads (runtime generated)
+uploads/

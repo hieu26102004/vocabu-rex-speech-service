@@ -14,7 +14,6 @@ from datetime import datetime
 import numpy as np
 
 import torch
-import torchaudio
 import whisper
 import librosa
 import soundfile as sf

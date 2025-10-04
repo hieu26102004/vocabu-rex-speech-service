@@ -103,8 +103,8 @@ def create_app() -> FastAPI:
         title=settings.APP_NAME,
         version=settings.APP_VERSION,
         description="Speech processing service for VocabuRex - Handles STT, pronunciation assessment, and voice interactions",
-        docs_url="/docs" if settings.ENVIRONMENT == "development" else None,
-        redoc_url="/redoc" if settings.ENVIRONMENT == "development" else None,
+        docs_url="/docs",  # Always enable docs for development and testing
+        redoc_url="/redoc",  # Always enable redoc for development and testing
         lifespan=lifespan
     )
     
@@ -158,7 +158,8 @@ def create_app() -> FastAPI:
             "endpoints": {
                 "health": "/health",
                 "docs": "/docs",
-                "speech": "/api/v1/speech"
+                "public_api": "/api/v1/asr",
+                "internal_api": "/speech"
             }
         }
     
