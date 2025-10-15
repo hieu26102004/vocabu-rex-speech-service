@@ -77,9 +77,9 @@ async def lifespan(app: FastAPI):
         from src.api import controllers
         controllers.asr_controller._whisper_service = whisper_service
         
-        # Preload and warm up base model
-        logger.info("🔄 Preloading Whisper model...")
-        success = await whisper_service.preload_model("base")
+        # Preload and warm up small model
+        logger.info("🔄 Preloading Whisper model (small)...")
+        success = await whisper_service.preload_model("small")
         if success:
             logger.info("🚀 Whisper model preloaded and warmed up successfully!")
         else:

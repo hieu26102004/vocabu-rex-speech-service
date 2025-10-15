@@ -71,9 +71,7 @@ class EnhancedWhisperASRService(IEnhancedASRService):
         # Loaded models cache
         self._loaded_models: Dict[str, Any] = {}
         
-        # Available model sizes
-        self.available_models = ["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]
-        
+
         # Language mapping
         self.language_mapping = {
             "english": "en",
@@ -87,6 +85,17 @@ class EnhancedWhisperASRService(IEnhancedASRService):
             "russian": "ru",
             "chinese": "zh"
         }
+
+    def get_available_models(self) -> list:
+        """Trả về danh sách các model Whisper đã tải về thực tế (luôn động)"""
+        model_names = ["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]
+        downloaded = []
+        for name in model_names:
+            pt_path = self.models_dir / f"{name}.pt"
+            bin_path = self.models_dir / name / "model.bin"
+            if pt_path.exists() or bin_path.exists():
+                downloaded.append(name)
+        return downloaded
     
     async def transcribe_with_phonemes(
         self,
@@ -422,11 +431,8 @@ class EnhancedWhisperASRService(IEnhancedASRService):
         """Get languages supported by Whisper"""
         return list(self.language_mapping.keys())
     
-    async def get_available_models(self) -> List[str]:
-        """Get available Whisper model sizes"""
-        return self.available_models.copy()
     
-    async def preload_model(self, model_size: str = "base"):
+    async def preload_model(self, model_size: str = "medium"):
         """Preload Whisper model to cache for faster inference"""
         try:
             logger.info(f"🚀 Preloading Whisper model: {model_size}")
@@ -562,7 +568,7 @@ class EnhancedWhisperASRService(IEnhancedASRService):
                 return self._loaded_models[model_size]
             
             logger.info(f"🔄 Loading Whisper model: {model_size} on device: {self.device}")
-            logger.info(f"📦 Available models: {self.available_models}")
+            logger.info(f"📦 Available models: {self.get_available_models()}")
             
             model = whisper.load_model(model_size, device=self.device)
             self._loaded_models[model_size] = model

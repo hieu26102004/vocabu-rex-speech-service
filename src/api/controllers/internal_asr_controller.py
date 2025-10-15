@@ -53,14 +53,33 @@ class InternalASRController:
 
 
 # Use the same service instances from asr_controller
-from src.api.controllers.asr_controller import whisper_service, transcribe_use_case, transcription_only_use_case
+from src.api.controllers.asr_controller import whisper_service
+from src.application.use_cases.asr_use_cases import TranscribeAudioUseCase, TranscriptionOnlyUseCase
 
-def get_internal_asr_controller() -> InternalASRController:
-    """Get internal ASR controller with initialized services"""
+def get_whisper_service_by_model(model_size: str):
+    """
+    Trả về instance EnhancedWhisperASRService với model_size tương ứng
+    """
+    from src.infrastructure.services.enhanced_whisper_service import EnhancedWhisperASRService
+    device = whisper_service.device if whisper_service else "cpu"
+    # Model đã được tải sẵn ở models/whisper
+    return EnhancedWhisperASRService(device=device, models_directory="models/whisper")
+
+def get_internal_asr_controller(model_size: str = "base") -> InternalASRController:
+    """Get internal ASR controller with initialized services for specific model"""
+    service = get_whisper_service_by_model(model_size)
+    transcribe_use_case = TranscribeAudioUseCase(
+        asr_service=service,
+        pronunciation_analyzer=service,
+        fluency_analyzer=service,
+        logger=logger
+    )
+    transcription_only_use_case = TranscriptionOnlyUseCase(service, logger)
     return InternalASRController(
         transcribe_use_case=transcribe_use_case,
         transcription_only_use_case=transcription_only_use_case
     )
+
 
 
 @internal_asr_router.post(
@@ -73,8 +92,7 @@ async def internal_transcribe_audio(
     audio_file: UploadFile = File(..., description="Audio file (WAV, MP3, M4A, FLAC, OGG)"),
     reference_text: Optional[str] = Form(None, description="Reference text for pronunciation comparison"),
     language: str = Form(default="english", description="Language for transcription"),
-    model_size: str = Form(default="base", description="Whisper model size"),
-    controller: InternalASRController = Depends(get_internal_asr_controller),
+    model_size: str = Form(default="medium", description="Whisper model size"),
 ) -> ASRResponseDTO:
     """
     Internal transcribe endpoint for service-to-service calls
@@ -113,7 +131,8 @@ async def internal_transcribe_audio(
             compare_pronunciation=reference_text is not None,
             analyze_fluency=True
         )
-        
+        # Khởi tạo controller với model_size tương ứng
+        controller = get_internal_asr_controller(model_size)
         # Execute transcription
         result = await controller.transcribe_use_case.execute(temp_file_path, request)
         
@@ -162,8 +181,7 @@ async def internal_transcribe_audio(
 async def internal_transcribe_only(
     audio_file: UploadFile = File(..., description="Audio file (WAV, MP3, M4A, FLAC, OGG)"),
     language: str = Form(default="english", description="Language for transcription"),
-    model_size: str = Form(default="base", description="Whisper model size"),
-    controller: InternalASRController = Depends(get_internal_asr_controller),
+    model_size: str = Form(default="medium", description="Whisper model size"),
 ) -> TranscriptionOnlyResponseDTO:
     """
     Internal transcribe-only endpoint for service-to-service calls
@@ -191,6 +209,8 @@ async def internal_transcribe_only(
             temp_file.write(content)
             temp_file_path = temp_file.name
         
+        # Khởi tạo controller với model_size tương ứng
+        controller = get_internal_asr_controller(model_size)
         # Execute transcription
         result = await controller.transcription_only_use_case.execute(
             temp_file_path, language, model_size
