@@ -38,6 +38,9 @@ RUN pip install torch==2.3.1+cu121 torchvision==0.18.1+cu121 torchaudio==2.3.1+c
 # Install other dependencies
 RUN pip install -r requirements.txt
 
+# Copy scripts directory for Whisper model download
+COPY scripts/ ./scripts/
+
 # Download Whisper models (tiny, base, small, medium, large)
 RUN python scripts/download_whisper_models.py
 
