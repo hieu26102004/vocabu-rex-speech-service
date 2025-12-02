@@ -82,7 +82,7 @@ README.md
 node_modules/
 
 # Models (will be downloaded in container)
-models/whisper/
+
 
 # Large media files
 *.wav
