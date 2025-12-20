@@ -17,6 +17,8 @@ import torch
 import whisper
 import librosa
 import soundfile as sf
+import shutil
+import subprocess
 from jiwer import wer, cer
 
 from src.domain.services.asr_service import (
@@ -540,8 +542,8 @@ class EnhancedWhisperASRService(IEnhancedASRService):
             if not audio_path.exists():
                 return False
             
-            # Load audio to validate
-            data, sample_rate = librosa.load(audio_file_path, sr=None)
+            # Load audio to validate (use safe loader with ffmpeg fallback for container formats)
+            data, sample_rate = await self._safe_librosa_load(audio_file_path, sr=None)
             
             # Check duration (Whisper works best with 0.1s - 30s clips)
             duration = len(data) / sample_rate
@@ -611,8 +613,8 @@ class EnhancedWhisperASRService(IEnhancedASRService):
                 logger.error(f"Original audio file not found: {audio_file_path}")
                 return audio_file_path
             
-            # Load audio
-            data, sample_rate = librosa.load(audio_file_path, sr=16000, mono=True)
+            # Load audio (use safe loader which can convert m4a/other to wav via ffmpeg)
+            data, sample_rate = await self._safe_librosa_load(audio_file_path, sr=16000, mono=True)
             logger.info(f"Audio loaded: {len(data)} samples, {sample_rate}Hz")
             
             # Normalize
@@ -758,6 +760,47 @@ class EnhancedWhisperASRService(IEnhancedASRService):
         except Exception as e:
             logger.error(f"Whisper transcription failed: {e}")
             raise
+
+    async def _safe_librosa_load(self, audio_file_path: str, sr=None, mono=False):
+        """Try to load audio with librosa; if fails for container formats, convert with ffmpeg to WAV and load that.
+
+        Returns (data, sample_rate)
+        """
+        try:
+            # First attempt: direct librosa load
+            data, sample_rate = librosa.load(audio_file_path, sr=sr, mono=mono)
+            return data, sample_rate
+        except Exception as e:
+            logger.warning(f"PySoundFile/audioread failed for {audio_file_path}: {e}. Attempting ffmpeg fallback.")
+
+            # Check ffmpeg availability
+            ffmpeg_cmd = shutil.which("ffmpeg")
+            if not ffmpeg_cmd:
+                logger.error("ffmpeg not found in PATH; cannot convert container audio files like m4a. Install ffmpeg.")
+                raise
+
+            # Create temp wav path
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                tmp_wav = tmp.name
+
+            try:
+                # Convert to 16k mono WAV for Whisper
+                cmd = [ffmpeg_cmd, "-y", "-i", audio_file_path, "-ar", str(16000), "-ac", "1", tmp_wav]
+                logger.info(f"Converting {audio_file_path} to WAV via ffmpeg: {' '.join(cmd)}")
+                proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+                if proc.returncode != 0:
+                    logger.error(f"ffmpeg conversion failed: {proc.stderr.decode(errors='ignore')}" )
+                    raise RuntimeError("ffmpeg conversion failed")
+
+                # Load converted wav with librosa
+                data, sample_rate = librosa.load(tmp_wav, sr=sr, mono=mono)
+                return data, sample_rate
+            finally:
+                try:
+                    if os.path.exists(tmp_wav):
+                        os.unlink(tmp_wav)
+                except Exception:
+                    pass
     
     async def _extract_phoneme_level_data(
         self,
