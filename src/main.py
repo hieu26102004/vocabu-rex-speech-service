@@ -5,6 +5,11 @@ Main FastAPI application entry point
 
 import logging
 import os
+
+# Fix for silent crashes on Windows when using PyTorch/CTranslate2 in FastAPI
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+os.environ["OMP_NUM_THREADS"] = "1"
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -73,12 +78,13 @@ async def lifespan(app: FastAPI):
             stt_controller._whisper_service = whisper_service
             
             # Preload model
-            logger.info("🔄 Preloading Whisper model (small)...")
-            success = await whisper_service.preload_model("small")
-            if success:
-                logger.info("🚀 Whisper STT ready!")
-            else:
-                logger.warning("⚠️ Model preload failed but service will continue")
+            # Preload model - DISABLED to avoid CTranslate2 initialization crashes during Uvicorn startup
+            logger.info("🔄 Skipping Whisper model preloading during startup (deferred to first request)")
+            # success = await whisper_service.preload_model("small")
+            # if success:
+            #     logger.info("🚀 Whisper STT ready!")
+            # else:
+            #     logger.warning("⚠️ Model preload failed but service will continue")
         except Exception as e:
             logger.error(f"❌ Failed to initialize Whisper service: {e}")
             logger.info("⚠️ STT will be initialized on first request")
