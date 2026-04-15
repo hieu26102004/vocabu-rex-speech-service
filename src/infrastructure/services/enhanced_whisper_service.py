@@ -14,7 +14,7 @@ from datetime import datetime
 import numpy as np
 
 import torch
-import whisper
+# whisper imported lazily in _load_whisper_model() to allow TTS-only mode
 import librosa
 import soundfile as sf
 import shutil
@@ -535,6 +535,108 @@ class EnhancedWhisperASRService(IEnhancedASRService):
             logger.error(f"❌ Model preload failed: {e}")
             return False
     
+    async def transcribe_simple(
+        self,
+        audio_path: str,
+        language: str = "en",
+        model_size: str = "small",
+    ) -> Dict[str, Any]:
+        """
+        Simple, fast transcription for voice call usage.
+        Uses faster-whisper (CTranslate2) for 2-4x speed improvement.
+        No pronunciation scoring — just text + confidence + duration.
+        """
+        try:
+            fw_model = await self._load_faster_whisper_model(model_size)
+            
+            # Map language
+            whisper_language = self.language_mapping.get(language, language)
+            if len(whisper_language) > 2:
+                whisper_language = whisper_language[:2]
+            
+            # Transcribe with faster-whisper (runs in thread pool)
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                lambda: self._faster_whisper_transcribe(fw_model, audio_path, whisper_language)
+            )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"faster-whisper transcription failed: {e}")
+            raise
+    
+    def _faster_whisper_transcribe(self, model, audio_path: str, language: str) -> Dict[str, Any]:
+        """Synchronous faster-whisper transcription."""
+        import math
+        
+        segments_gen, info = model.transcribe(
+            audio_path,
+            language=language,
+            beam_size=1,          # Faster with greedy search
+            vad_filter=True,      # Filter out silence automatically
+            vad_parameters=dict(
+                min_silence_duration_ms=300,
+            ),
+        )
+        
+        # Collect segments
+        texts = []
+        total_duration = 0.0
+        avg_logprobs = []
+        
+        for segment in segments_gen:
+            texts.append(segment.text.strip())
+            total_duration = max(total_duration, segment.end)
+            if segment.avg_logprob is not None:
+                avg_logprobs.append(segment.avg_logprob)
+        
+        full_text = " ".join(texts).strip()
+        
+        # Calculate confidence from avg_logprob
+        avg_confidence = 0.0
+        if avg_logprobs:
+            avg_logprob = sum(avg_logprobs) / len(avg_logprobs)
+            avg_confidence = min(1.0, max(0.0, math.exp(avg_logprob)))
+        
+        return {
+            "text": full_text,
+            "confidence": round(avg_confidence, 3),
+            "language": info.language,
+            "duration": round(total_duration, 2),
+        }
+    
+    async def _load_faster_whisper_model(self, model_size: str = "small"):
+        """Load faster-whisper model with caching (separate from openai-whisper)."""
+        if not hasattr(self, '_faster_whisper_models'):
+            self._faster_whisper_models: Dict[str, Any] = {}
+        
+        if model_size in self._faster_whisper_models:
+            return self._faster_whisper_models[model_size]
+        
+        logger.info(f"🔄 Loading faster-whisper model: {model_size} on {self.device}")
+        
+        from faster_whisper import WhisperModel
+        
+        # Determine compute type based on device
+        if self.device.startswith("cuda"):
+            compute_type = "float16"
+        else:
+            compute_type = "int8"
+        
+        model = WhisperModel(
+            model_size,
+            device=self.device,
+            compute_type=compute_type,
+            download_root=str(self.models_dir),
+        )
+        
+        self._faster_whisper_models[model_size] = model
+        logger.info(f"✅ faster-whisper {model_size} loaded ({compute_type} on {self.device})")
+        
+        return model
+    
     async def validate_audio_for_transcription(self, audio_file_path: str) -> bool:
         """Validate audio file for Whisper transcription"""
         try:
@@ -572,6 +674,7 @@ class EnhancedWhisperASRService(IEnhancedASRService):
             logger.info(f"🔄 Loading Whisper model: {model_size} on device: {self.device}")
             logger.info(f"📦 Available models: {self.get_available_models()}")
             
+            import whisper
             model = whisper.load_model(model_size, device=self.device)
             self._loaded_models[model_size] = model
             

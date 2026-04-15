@@ -12,7 +12,7 @@ librosa==0.10.1
 scipy==1.11.0
 numpy==1.24.0
 soundfile==0.12.1
-openai-whisper==20231117
+faster-whisper==1.0.3
 # torch, torchaudio will be installed separately with CUDA support
 transformers==4.35.0
 

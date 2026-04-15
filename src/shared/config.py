@@ -227,6 +227,38 @@ class Settings(BaseSettings):
         description="Log file backup count"
     )
     
+    # Service Mode Configuration
+    SERVICE_MODE: str = Field(
+        default="both",
+        description="Service mode: 'stt' (only STT/Whisper), 'tts' (only TTS/VibeVoice), 'both' (all features)"
+    )
+    
+    # TTS Configuration (VibeVoice)
+    TTS_MODEL_NAME: str = Field(
+        default="microsoft/VibeVoice-Realtime-0.5B",
+        description="VibeVoice model name from HuggingFace"
+    )
+    TTS_MODEL_PATH: str = Field(
+        default="./models/vibevoice",
+        description="Local cache directory for TTS model"
+    )
+    TTS_DEVICE: str = Field(
+        default="auto",
+        description="TTS computation device (cpu, cuda, auto)"
+    )
+    TTS_SAMPLE_RATE: int = Field(
+        default=24000,
+        description="TTS output audio sample rate"
+    )
+    TTS_MAX_TEXT_LENGTH: int = Field(
+        default=500,
+        description="Maximum text length for TTS"
+    )
+    TTS_VOICE_STYLE: str = Field(
+        default="friendly",
+        description="Voice style/personality"
+    )
+    
     # Health Check
     HEALTH_CHECK_TIMEOUT: int = Field(
         default=30, 
